@@ -124,7 +124,15 @@ def get_country_breakdown(df: pd.DataFrame) -> dict:
 
 
 def load_data():
-    """Loads data from DEFAULT_DATA_PATH or user uploads."""
+    """Loads data from uploaded file (priority) or DEFAULT_DATA_PATH.
+    
+    Uses session_state to persist uploaded data across reruns.
+    """
+    # Check if we have uploaded data in session state
+    if "uploaded_data" in st.session_state and st.session_state.uploaded_data is not None:
+        return st.session_state.uploaded_data
+    
+    # Otherwise, try to load from default path
     if os.path.exists(DEFAULT_DATA_PATH):
         df = load_excel()
         long_df = to_long_format(df)
@@ -132,15 +140,49 @@ def load_data():
             long_df["Month"] = pd.to_datetime(long_df["Month"], errors="coerce")
         return long_df
     
-    st.sidebar.info("Importez un fichier Excel via la barre latérale pour commencer.")
-    uploaded_file = st.sidebar.file_uploader("Excel (xlsx)", type=["xlsx"], key="main_uploader")
-    if uploaded_file is None:
-        return None
-    df = load_excel(uploaded_bytes=uploaded_file.read())
-    long_df = to_long_format(df)
-    if "Month" in long_df.columns:
-        long_df["Month"] = pd.to_datetime(long_df["Month"], errors="coerce")
-    return long_df
+    # No data available
+    return None
+
+
+def handle_file_upload():
+    """Handle file upload in sidebar. Returns True if new file was uploaded."""
+    st.sidebar.subheader("📁 Importer des données")
+    
+    uploaded_file = st.sidebar.file_uploader(
+        "Fichier Excel (xlsx)", 
+        type=["xlsx"], 
+        key="file_uploader",
+        help="Uploadez votre fichier de ventes mensuelles"
+    )
+    
+    if uploaded_file is not None:
+        # Check if this is a new file (compare by name and size)
+        file_key = f"{uploaded_file.name}_{uploaded_file.size}"
+        
+        if st.session_state.get("last_uploaded_file") != file_key:
+            # New file uploaded - process it
+            try:
+                uploaded_bytes = uploaded_file.read()
+                df = load_excel(uploaded_bytes=uploaded_bytes)
+                long_df = to_long_format(df)
+                if "Month" in long_df.columns:
+                    long_df["Month"] = pd.to_datetime(long_df["Month"], errors="coerce")
+                
+                # Store in session state
+                st.session_state.uploaded_data = long_df
+                st.session_state.last_uploaded_file = file_key
+                
+                # Reset country selection to use new countries
+                st.session_state.pop("selected_countries", None)
+                
+                st.sidebar.success(f"✅ Fichier chargé: {uploaded_file.name}")
+                st.rerun()
+                
+            except Exception as e:
+                st.sidebar.error(f"❌ Erreur: {e}")
+                return False
+    
+    return False
 
 
 def sidebar_controls(long_df: pd.DataFrame) -> Dict[str, Any]:
@@ -223,10 +265,6 @@ def sidebar_controls(long_df: pd.DataFrame) -> Dict[str, Any]:
     if not selected_countries:
         selected_countries = all_countries
     
-    # File uploader
-    st.sidebar.subheader("📁 Données")
-    uploaded = st.sidebar.file_uploader("Excel (xlsx)", type=["xlsx"], key="sidebar_uploader")
-    
     # Configuration sliders
     st.sidebar.subheader("⚙️ Configuration")
     closure_threshold = st.sidebar.slider(
@@ -255,7 +293,6 @@ def sidebar_controls(long_df: pd.DataFrame) -> Dict[str, Any]:
         "start_date": start_date,
         "end_date": end_date,
         "selected_countries": selected_countries,
-        "uploaded_file": uploaded,
         "closure_threshold": closure_threshold,
         "heatmap_months": heatmap_months,
         "heatmap_top_n": heatmap_top_n,
@@ -277,25 +314,19 @@ def main():
     st.title("👓 Lapaire Dashboard - Analyse Réseau")
     st.caption("Dashboard d'analyse des performances du réseau de boutiques")
     
-    # Load data
+    # Handle file upload first (before loading data)
+    handle_file_upload()
+    
+    # Load data (from upload or default)
     long_df = load_data()
+    
     if long_df is None:
-        st.error("❌ Impossible de charger les données. Vérifiez le fichier Excel.")
+        st.warning("📁 Aucune donnée disponible. Veuillez uploader un fichier Excel dans la barre latérale.")
+        st.sidebar.info("👆 Uploadez un fichier Excel pour commencer l'analyse.")
         return
     
     # Build sidebar controls after we have data
     controls = sidebar_controls(long_df)
-    
-    # Handle new file upload from sidebar - use session state to avoid rerun issues
-    if controls["uploaded_file"] is not None:
-        # Store in session state to persist across reruns
-        uploaded_bytes = controls["uploaded_file"].read()
-        working_df = load_excel(uploaded_bytes=uploaded_bytes)
-        new_long_df = to_long_format(working_df)
-        if "Month" in new_long_df.columns:
-            new_long_df["Month"] = pd.to_datetime(new_long_df["Month"], errors="coerce")
-        # Update long_df with new data (controls already built, just update data)
-        long_df = new_long_df
     
     # Apply filters
     filtered = filter_data(
