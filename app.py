@@ -279,14 +279,16 @@ def main():
     # Build sidebar controls after we have data
     controls = sidebar_controls(long_df)
     
-    # Handle new file upload from sidebar
+    # Handle new file upload from sidebar - use session state to avoid rerun issues
     if controls["uploaded_file"] is not None:
-        working_df = load_excel(uploaded_bytes=controls["uploaded_file"].read())
-        long_df = to_long_format(working_df)
-        if "Month" in long_df.columns:
-            long_df["Month"] = pd.to_datetime(long_df["Month"], errors="coerce")
-        # Rebuild controls with new data
-        controls = sidebar_controls(long_df)
+        # Store in session state to persist across reruns
+        uploaded_bytes = controls["uploaded_file"].read()
+        working_df = load_excel(uploaded_bytes=uploaded_bytes)
+        new_long_df = to_long_format(working_df)
+        if "Month" in new_long_df.columns:
+            new_long_df["Month"] = pd.to_datetime(new_long_df["Month"], errors="coerce")
+        # Update long_df with new data (controls already built, just update data)
+        long_df = new_long_df
     
     # Apply filters
     filtered = filter_data(
@@ -1118,5 +1120,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
-
