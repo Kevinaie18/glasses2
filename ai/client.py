@@ -24,7 +24,7 @@ RETRY_DELAY = 1.0  # secondes
 
 
 @st.cache_resource
-def get_client() -> Optional[anthropic.Anthropic]:
+def get_client():
     """
     Retourne un client Anthropic singleton.
     La clé API est lue depuis st.secrets.
@@ -33,16 +33,15 @@ def get_client() -> Optional[anthropic.Anthropic]:
         Client Anthropic ou None si non disponible
     """
     if not ANTHROPIC_AVAILABLE:
-        st.warning("⚠️ Package 'anthropic' non installé. Installez-le avec: pip install anthropic")
         return None
     
-    api_key = st.secrets.get("ANTHROPIC_API_KEY")
+    try:
+        api_key = st.secrets.get("ANTHROPIC_API_KEY", None)
+    except Exception:
+        # secrets.toml n'existe pas ou n'est pas configuré
+        api_key = None
     
     if not api_key:
-        st.warning(
-            "🔑 Clé API Anthropic manquante. "
-            "Ajoutez ANTHROPIC_API_KEY dans .streamlit/secrets.toml"
-        )
         return None
     
     try:

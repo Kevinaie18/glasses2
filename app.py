@@ -63,9 +63,6 @@ from components.ai_widgets import render_ai_tab
 # --- Fin imports IA ---
 
 
-def load_data():
-    """Loads data from DEFAULT_DATA_PATH or user uploads."""
-
 # --- V1.5: Fonctions helper pour l'IA ---
 
 def get_top_performers(df: pd.DataFrame, n: int = 5) -> list:
@@ -190,31 +187,41 @@ def sidebar_controls(long_df: pd.DataFrame) -> Dict[str, Any]:
     # Clean country data to avoid sorting errors with mixed types
     all_countries = clean_and_sort_unique(long_df["Country"])
     
-    # Select all option
-    if st.sidebar.button("✅ Tous les pays", key="select_all_countries"):
-        st.session_state.selected_countries = all_countries
-    if st.sidebar.button("❌ Aucun pays", key="clear_countries"):
-        st.session_state.selected_countries = []
-    
     # Initialize session state for countries if not exists
     if "selected_countries" not in st.session_state:
         st.session_state.selected_countries = all_countries
     
-    # Country multiselect
+    # Ensure session state countries are valid (exist in current data)
+    valid_selected = [c for c in st.session_state.selected_countries if c in all_countries]
+    if not valid_selected:
+        valid_selected = all_countries
+        st.session_state.selected_countries = all_countries
+    
+    # Select all / clear buttons
+    col_btn1, col_btn2 = st.sidebar.columns(2)
+    with col_btn1:
+        if st.button("✅ Tous", key="select_all_countries", use_container_width=True):
+            st.session_state.selected_countries = all_countries
+            st.rerun()
+    with col_btn2:
+        if st.button("❌ Aucun", key="clear_countries", use_container_width=True):
+            st.session_state.selected_countries = []
+            st.rerun()
+    
+    # Country multiselect - use session state directly
     selected_countries = st.sidebar.multiselect(
         "Sélectionner les pays",
         options=all_countries,
-        default=st.session_state.selected_countries,
+        default=valid_selected,
         key="country_multiselect"
     )
     
-    # Update session state
-    st.session_state.selected_countries = selected_countries
+    # Update session state with current selection
+    st.session_state.selected_countries = selected_countries if selected_countries else all_countries
     
-    # If no countries selected, select all
+    # If no countries selected, use all
     if not selected_countries:
         selected_countries = all_countries
-        st.session_state.selected_countries = all_countries
     
     # File uploader
     st.sidebar.subheader("📁 Données")
@@ -632,7 +639,7 @@ def main():
             cols = st.columns(min(3, len(controls["selected_countries"])) or 1)
             for idx, country in enumerate(controls["selected_countries"]):
                 with cols[idx % len(cols)]:
-                    st.plotly_chart(heatmap_top5_shops(filtered, country, controls['heatmap_months'], controls['heatmap_top_n']), use_container_width=True)
+                    st.plotly_chart(heatmap_top5_shops(filtered, country, controls['heatmap_months'], controls['heatmap_top_n']), use_container_width=True, key=f"heatmap_{country}_{idx}")
     
     with tab_shops:
         st.subheader("🏪 Analyse par boutique")
